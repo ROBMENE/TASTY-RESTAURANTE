@@ -276,13 +276,35 @@
     transition: all .15s ease;
   }
   .date-chip .d{ display:block; font-weight:600; color:var(--cream); font-size:.92rem; margin-top:.2rem; }
+  .date-chip .mo{ display:block; font-size:.62rem; color:var(--cream-dim); margin-top:.1rem; text-transform:uppercase; letter-spacing:.03em; }
   .date-chip.active{
     background:var(--wine);
     border-color:var(--wine);
     color:var(--ink);
   }
   .date-chip.active .d{ color:var(--ink); }
+  .date-chip.active .mo{ color:var(--ink); opacity:.75; }
   .date-chip:not(.active):hover{ border-color:var(--gold-dim); }
+
+  .date-input{
+    width:100%;
+    box-sizing:border-box;
+    padding:.75rem .8rem;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    color:var(--cream);
+    font-family:'Public Sans', sans-serif;
+    font-size:.95rem;
+    outline:none;
+    border-radius:0;
+    color-scheme: dark;
+  }
+  .date-input:focus{ border-color:var(--gold); }
+  .closed-day-hint{
+    margin-top:.4rem;
+    font-size:.78rem;
+    color:#d98a91;
+  }
 
   .time-grid{
     display:grid;
@@ -498,7 +520,8 @@
 
         <div class="field-group">
           <span class="field-label" id="txtDate">Fecha</span>
-          <div class="date-grid" id="dateGrid"></div>
+          <input type="date" class="date-input" id="dateInput">
+          <div class="closed-day-hint" id="closedDayHint" style="display:none;"></div>
         </div>
 
         <div class="field-group">
@@ -554,6 +577,13 @@
     sun: { es: 'Dom', en: 'Sun' },
   };
 
+  const MONTHS = {
+    0: { es: 'Ene', en: 'Jan' }, 1: { es: 'Feb', en: 'Feb' }, 2: { es: 'Mar', en: 'Mar' },
+    3: { es: 'Abr', en: 'Apr' }, 4: { es: 'May', en: 'May' }, 5: { es: 'Jun', en: 'Jun' },
+    6: { es: 'Jul', en: 'Jul' }, 7: { es: 'Ago', en: 'Aug' }, 8: { es: 'Sep', en: 'Sep' },
+    9: { es: 'Oct', en: 'Oct' }, 10: { es: 'Nov', en: 'Nov' }, 11: { es: 'Dic', en: 'Dec' },
+  };
+
   // Horario real del restaurante. Cada día tiene una lista de franjas [hIni, mIni, hFin, mFin].
   // Una lista vacía significa cerrado ese día.
   const SCHEDULE = {
@@ -584,15 +614,34 @@
   }
 
   // Genera los próximos días reales a partir de hoy (no son fechas fijas de ejemplo).
-  const DATE_CHIPS_COUNT = 14;
-  function buildDateChipsData(){
-    const chips = [];
+  // Límite de cuánto se puede reservar con antelación (en meses).
+  const MAX_MONTHS_AHEAD = 6;
+  const toISODate = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+
+  function setDateInputBounds(){
+    const input = document.getElementById('dateInput');
     const today = new Date();
-    for (let i = 0; i < DATE_CHIPS_COUNT; i++){
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-      chips.push({ key: DOW_KEYS[d.getDay()], date: d.getDate() });
+    input.min = toISODate(today);
+    const max = new Date(today.getFullYear(), today.getMonth() + MAX_MONTHS_AHEAD, today.getDate());
+    input.max = toISODate(max);
+    if (!input.value) input.value = toISODate(today);
+  }
+
+  function onDateChange(){
+    const input = document.getElementById('dateInput');
+    if (!input.value) return;
+    const [y, m, d] = input.value.split('-').map(Number);
+    const selected = new Date(y, m - 1, d);
+    activeDayKey = DOW_KEYS[selected.getDay()];
+    const hint = document.getElementById('closedDayHint');
+    if (SCHEDULE[activeDayKey].length === 0){
+      hint.textContent = t().closedDay;
+      hint.style.display = 'block';
+    } else {
+      hint.style.display = 'none';
     }
-    return chips;
+    buildTimeSlots();
+    updateWhen();
   }
 
   const I18N = {
@@ -711,40 +760,16 @@
   }
 
   function updateWhen(){
-    const activeDate = document.querySelector('.date-chip.active');
+    const input = document.getElementById('dateInput');
     const activeTime = document.querySelector('.time-chip.active');
-    const dayLabel = activeDate ? (DAYS[activeDate.dataset.key][currentLang] + ' ' + activeDate.dataset.date) : '';
+    let dayLabel = '';
+    if (input && input.value){
+      const [y, m, d] = input.value.split('-').map(Number);
+      const selected = new Date(y, m - 1, d);
+      dayLabel = DAYS[DOW_KEYS[selected.getDay()]][currentLang] + ' ' + d + ' ' + MONTHS[m - 1][currentLang];
+    }
     const timeLabel = activeTime ? activeTime.textContent : '';
     summaryWhen.textContent = dayLabel + (timeLabel ? ', ' + timeLabel : '');
-  }
-
-  /* -------- Selector de fecha (genera los 5 días de ejemplo) -------- */
-  function buildDateChips(){
-    const grid = document.getElementById('dateGrid');
-    grid.innerHTML = '';
-    buildDateChipsData().forEach(({ key, date }) => {
-      const closed = SCHEDULE[key].length === 0;
-      const chip = document.createElement('div');
-      chip.className = 'date-chip' + (key === activeDayKey ? ' active' : '');
-      chip.dataset.key = key;
-      chip.dataset.date = date;
-      chip.innerHTML = '<span>' + DAYS[key][currentLang] + '</span><span class="d">' + date + '</span>';
-      if (closed){
-        chip.style.opacity = '.35';
-        chip.style.textDecoration = 'line-through';
-        chip.style.cursor = 'not-allowed';
-        chip.title = t().closedDay;
-      } else {
-        chip.addEventListener('click', () => {
-          activeDayKey = key;
-          document.querySelectorAll('.date-chip').forEach(c => c.classList.remove('active'));
-          chip.classList.add('active');
-          buildTimeSlots();
-          updateWhen();
-        });
-      }
-      grid.appendChild(chip);
-    });
   }
 
   /* -------- Selector de hora (según el día elegido) -------- */
@@ -821,13 +846,13 @@
     microNote.textContent = t().defaultNote;
     summaryParty.textContent = party + ' ' + peopleLabel(party);
 
-    buildDateChips();
-    buildTimeSlots();
-    updateWhen();
+    setDateInputBounds();
+    onDateChange();
   }
 
   document.getElementById('langEsBtn').addEventListener('click', () => applyLanguage('es'));
   document.getElementById('langEnBtn').addEventListener('click', () => applyLanguage('en'));
+  document.getElementById('dateInput').addEventListener('change', onDateChange);
 
   applyLanguage('es');
 
