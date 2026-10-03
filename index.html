@@ -253,11 +253,19 @@
   .stepper-btn:hover{ border-color:var(--gold); color:var(--gold); }
 
   .date-grid{
-    display:grid;
-    grid-template-columns: repeat(5, 1fr);
+    display:flex;
     gap:.4rem;
+    overflow-x:auto;
+    scroll-snap-type:x proximity;
+    padding-bottom:.3rem;
+    -webkit-overflow-scrolling:touch;
   }
+  .date-grid::-webkit-scrollbar{ height:5px; }
+  .date-grid::-webkit-scrollbar-thumb{ background:var(--line); }
   .date-chip{
+    flex:0 0 auto;
+    min-width:62px;
+    scroll-snap-align:start;
     padding:.6rem .3rem;
     text-align:center;
     background:var(--surface-2);
@@ -575,14 +583,17 @@
     });
   }
 
-  // Días de ejemplo que se muestran en el selector de fecha (clave de día + número de fecha).
-  const DATE_CHIPS = [
-    { key: 'fri', date: 21 },
-    { key: 'sat', date: 22 },
-    { key: 'sun', date: 23 },
-    { key: 'mon', date: 24 },
-    { key: 'tue', date: 25 },
-  ];
+  // Genera los próximos días reales a partir de hoy (no son fechas fijas de ejemplo).
+  const DATE_CHIPS_COUNT = 14;
+  function buildDateChipsData(){
+    const chips = [];
+    const today = new Date();
+    for (let i = 0; i < DATE_CHIPS_COUNT; i++){
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+      chips.push({ key: DOW_KEYS[d.getDay()], date: d.getDate() });
+    }
+    return chips;
+  }
 
   const I18N = {
     es: {
@@ -679,7 +690,7 @@
 
   let currentLang = 'es';
   let party = 2;
-  let activeDayKey = 'fri';
+  let activeDayKey = DOW_KEYS[new Date().getDay()];
 
   const t = () => I18N[currentLang];
   const pad = n => String(n).padStart(2, '0');
@@ -711,7 +722,7 @@
   function buildDateChips(){
     const grid = document.getElementById('dateGrid');
     grid.innerHTML = '';
-    DATE_CHIPS.forEach(({ key, date }) => {
+    buildDateChipsData().forEach(({ key, date }) => {
       const closed = SCHEDULE[key].length === 0;
       const chip = document.createElement('div');
       chip.className = 'date-chip' + (key === activeDayKey ? ' active' : '');
